@@ -2,25 +2,67 @@ import { mutation, query } from "./_generated/server";
 import { ConvexError, v } from "convex/values";
 
 
+export const generateUploadUrl = mutation(async (ctx) => {
+    return await ctx.storage.generateUploadUrl();
+});
+
 export const getDocuments = query({
+    /* args: {
+        documentId: v.id("documents"),
+    }, */
+    //async handler(ctx, args) {
     async handler(ctx) {
         const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier;
 
         if (!userId) {
-            return [];
+            return null;
             //return undefined;
         }
 
+        /* const document = await ctx.db.get(args.documentId);
+
+        if (!document) {
+            return null;
+        }   
+
+        if (document?.tokenIdentifier !== userId) {
+            return null;
+        } */
         return await ctx.db.query('documents').withIndex('by_tokenIdentifier', 
             (q) => q.eq('tokenIdentifier', userId)).collect()
     },
 });
 
+export const getDocument = query(
+    {args: {documentId: v.id("documents")},
+        async handler(ctx, args) {
+            const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier;
+
+            if (!userId) {
+                return null;
+                //return undefined;
+            }
+
+            // Get the Document by DocumentId
+            const document = await ctx.db.get(args.documentId);
+
+            if (!document) {
+                return null;
+            }   
+
+            if (document.tokenIdentifier !== userId) {
+                return null;
+            }
+            
+            return {...document, documentUrl: await ctx.storage.getUrl(document.fileId)};
+        },
+    }
+);
+
 export const createDocument = mutation({
     args: {
-        title: v.string()
-        //fileId: v.id("_storage"),
-        //orgId: v.optional(v.string()),
+        title: v.string(),
+        fileId: v.id("_storage"),
     },
     async handler(ctx, args) {
         const userId = (await ctx.auth.getUserIdentity())?.tokenIdentifier;
@@ -35,7 +77,8 @@ export const createDocument = mutation({
 
         await ctx.db.insert('documents', {
             title: args.title,
-            tokenIdentifier: userId
+            tokenIdentifier: userId,
+            fileId: args.fileId,
         })
     },
 });

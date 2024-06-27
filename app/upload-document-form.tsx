@@ -13,15 +13,15 @@ import {
     FormLabel,
     FormMessage,
   } from "@/components/ui/form";
-import { createDocument } from "@/convex/documents";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Loader2 } from "lucide-react";
 import { LoadingButton } from "@/components/loading-button";
+import { Id } from "@/convex/_generated/dataModel";
 
  
 const formSchema = z.object({
   title: z.string().min(1).max(250),
+  file: z.instanceof(File),
 });
 
 
@@ -31,6 +31,7 @@ export default function UploadDocumentForm({
     onUpload: () => void;
   }) {
     const createDocument = useMutation(api.documents.createDocument);
+    const generateUploadUrl = useMutation(api.documents.generateUploadUrl);
     
     // 1. Define your form.
     const form = useForm<z.infer<typeof formSchema>>({
@@ -45,13 +46,31 @@ export default function UploadDocumentForm({
         // sleep for 2s
         //await new Promise((resolve) => setTimeout(resolve, 2000));
         // createDocument({title: values.title});
-        await createDocument(values);
+
+        // Step 1: Get a short-lived upload URL
+        const url = await generateUploadUrl();
+        console.log(url);
+
+        // Step 2: POST the file to the URL
+        const result = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": values.file.type },
+            body: values.file,
+        }); 
+        const { storageId } = await result.json();
+
+        await createDocument({
+            title: values.title,
+            fileId: storageId as Id<"_storage">,
+        });
+        
         onUpload();
     }
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+        
         <FormField
           control={form.control}
           name="title"
@@ -68,6 +87,32 @@ export default function UploadDocumentForm({
             </FormItem>
           )}
         />
+
+        <FormField
+          control={form.control}
+          name="file"
+          render={({ field: { value, onChange, ...fieldProps } }) => (
+            <FormItem>
+              <FormLabel>File</FormLabel>
+              <FormControl>
+                <Input 
+                    {...fieldProps}  
+                    type="file"
+                    accept=".*,.txt,.xml,.doc,.pdf"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      onChange(file);
+                    }}
+                />
+              </FormControl>
+             {/*  <FormDescription>
+                This is your public display name.
+              </FormDescription> */}
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
         <LoadingButton
           isLoading={form.formState.isSubmitting}
           loadingText="Uploading..."
